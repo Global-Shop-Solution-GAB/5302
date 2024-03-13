@@ -1,0 +1,131 @@
+Program.Sub.ScreenSU.Start
+Gui.Form..Create
+Gui.Form..Size(17640,10695)
+Gui.Form..MinX(0)
+Gui.Form..MinY(0)
+Gui.Form..Position(0,0)
+Gui.Form..BackColor(-2147483633)
+Gui.Form..MousePointer(0)
+Gui.Form..Event(UnLoad,Form_UnLoad)
+Gui.Form..Caption("Sales Order Status")
+Gui.Form.GsGcARItems.Create(GsGridControl)
+Gui.Form.GsGcARItems.Size(17115,9240)
+Gui.Form.GsGcARItems.Position(135,735)
+Gui.Form.GsGcARItems.Anchor(15)
+Gui.Form.cmd1.Create(Button)
+Gui.Form.cmd1.Size(855,375)
+Gui.Form.cmd1.Position(16290,135)
+Gui.Form.cmd1.Caption("Export")
+Gui.Form.cmd1.Event(Click,cmd1_Click)
+Gui.Form.cmd1.Anchor(9)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'Created for Display Craft Mfg. on 10/14/2018 by SKC
+
+
+f.ODBC.Connection!con.OpenCompanyConnection(10000)
+f.Intrinsic.Control.CallSub("GetData")
+gui.Form..Show
+Program.Sub.Main.End
+
+Program.Sub.Form_UnLoad.Start
+F.Intrinsic.Control.End
+Program.Sub.Form_UnLoad.End
+
+Program.Sub.GetData.Start
+'Gather data
+'F.Data.DataTable.CreateFromSQL("OpenItems", "con", "select Distinct Order_no,  Rtrim(Customer) as Customer,  0.00 as Order_Amt,0.00 as Amt_Invoice, 0.0 as Amt_Trans_Total from AR_OPEN_ITEMS Where Order_no <> '' and Order_no > 0 group by  Customer, Order_No",True )
+F.Data.DataTable.CreateFromSQL("OpenItems", "con", "select Distinct Invoice, Order_no,  Rtrim(Customer) as Customer,  0.00 as Order_Amt,0.00 as Amt_Invoice, 0.0 as Amt_Trans_Total from AR_OPEN_ITEMS group by Customer, Invoice, Order_no",True )
+F.Data.DataTable.CreateFromSQL("OpenOrders", "con", "Select Distinct Order_No, Rtrim(Customer) as Customer, ' ' as Invoice, 0.0 as Order_Amt,0.00 as Amt_Invoice, 0.00 as Amt_Trans_Total from  v_Order_Lines Where Order_no <> '' and Order_no > 0", True)
+'F.Data.DataTable.Merge("OpenOrders", "OpenItems", False, 2)
+'Function.Intrinsic.Debug.InvokeDebugger
+'Function.Intrinsic.Debug.Stop
+
+'f.Data.DataView.Create("OpenItems", "view", 22)
+'F.Data.DataView.ToDataTableDistinct("OpenItems", "view", "AROpenItems", "Customer*!*Order_No*!*Order_Amt*!*Amt_Invoice*!*Amt_Trans_Total")
+
+'Get customer name
+F.Data.Dictionary.CreateFromSQL("Customer", "con", "Select Rtrim(Customer) as Customer, Name_Customer from v_customer_Master")
+f.Data.Dictionary.SetDefaultReturn("Customer", "")
+F.Data.DataTable.FillFromDictionary("OpenItems", "Customer","Customer")
+F.Data.DataTable.FillFromDictionary("OpenOrders", "Customer","Customer")
+F.Data.Dictionary.Close("Customer")
+
+'Get Invoice number
+f.Data.Dictionary.CreateFromSQL("OrderNo", "con", "Select Distinct INVOICE, ORDER_NO from AR_Open_Items where Order_No <> ''  and Batch_Code = 10 Group by Order_no")
+f.Data.Dictionary.SetDefaultReturn("OrderNo", 0)
+f.Data.DataTable.FillFromDictionary("OpenItems", "OrderNo", "Invoice", "Order_No")
+F.Data.Dictionary.Close("OrderNo")
+
+'get sales order amount
+F.Data.Dictionary.CreateFromSQL("SalesOrder", "con", "Select Order_No, Sum(Extension) from v_Order_Lines group by Order_no")
+f.Data.Dictionary.SetDefaultReturn("SalesOrder",0.00)
+f.Data.DataTable.FillFromDictionary("OpenItems", "SalesOrder", "Order_No", "Order_Amt")
+f.Data.DataTable.FillFromDictionary("OpenOrders", "SalesOrder", "Order_No", "Order_Amt")
+F.Data.Dictionary.Close("SalesOrder")
+
+'Get Invoice amount
+f.Data.Dictionary.CreateFromSQL("InvoiceAmt", "con", "Select Order_no, Sum(Amt_Invoice) as Amt_Invoice from AR_Open_Items where Order_No <> ''  and Batch_Code = 10 Group by Order_no")
+f.Data.Dictionary.SetDefaultReturn("InvoiceAmt", 0)
+f.Data.DataTable.FillFromDictionary("OpenItems", "InvoiceAmt", "Order_No", "Amt_Invoice")
+f.Data.DataTable.FillFromDictionary("OpenOrders", "InvoiceAmt", "Order_No", "Amt_Invoice")
+F.Data.Dictionary.Close("InvoiceAmt")
+
+'AR Balance
+f.Data.Dictionary.CreateFromSQL("ARAmt", "con", "Select Order_no, Sum(Amt_Invoice) as Amt_Trans_Total from AR_Open_Items where Order_No <> '' Group by Order_no")
+f.Data.Dictionary.SetDefaultReturn("ARAmt", 0)
+f.Data.DataTable.FillFromDictionary("OpenItems", "ARAmt", "Order_No", "Amt_Trans_Total")
+f.Data.DataTable.FillFromDictionary("OpenOrders", "ARAmt", "Order_No", "Amt_Trans_Total")
+F.Data.Dictionary.Close("ARAmt")
+
+
+F.Data.DataTable.Merge("OpenOrders", "OpenItems", False, 2)
+f.Data.DataView.Create("OpenItems", "view", 22,,"Order_No asc")
+F.Data.DataView.ToDataTableDistinct("OpenItems", "view", "AROpenItems", "Customer*!*Order_No*!*Order_Amt*!*Amt_Invoice*!*Amt_Trans_Total")
+
+F.Data.DataTable.AddExpressionColumn("AROpenItems", "OrderTotal", "Float", "Amt_Invoice + Order_Amt")
+F.Data.DataTable.AddExpressionColumn("AROpenItems", "Outstanding_Balance", "Float", "OrderTotal - Amt_Invoice")
+f.Data.DataView.Create("AROpenItems", "dvARItems", 22, "Outstanding_Balance <> 0", "Customer asc")
+gui.Form.GsGcARItems.AddGridviewFromDataview("gvARItems", "AROpenItems", "dvARItems")
+
+Function.Intrinsic.Debug.Stop
+
+f.Intrinsic.Control.CallSub("GridSetup")
+Program.Sub.GetData.End
+
+Program.Sub.GridSetup.Start
+gui.Form.GsGcARItems.MainView("gvARItems")
+gui.Form.GsGcARItems.SetColumnProperty("gvARItems", "Order_Amt", "Visible", "False")
+gui.Form.GsGcARItems.SetColumnProperty("gvARItems", "Order_no", "Caption", "Order #")
+'gui.Form.GsGcARItems.SetColumnProperty("gvARItems", "Order_Amt", "Caption", "Total Sales Order Amount")
+gui.Form.GsGcARItems.SetColumnProperty("gvARItems", "Amt_Invoice", "Caption", "Total Billed to Date")
+gui.Form.GsGcARItems.SetColumnProperty("gvARItems", "Amt_Trans_Total", "Caption", "AR Balance")
+gui.Form.GsGcARItems.SetColumnProperty("gvARItems", "OrderTotal", "Caption", "Total Sales Order Amount")
+gui.Form.GsGcARItems.SetColumnProperty("gvARItems", "Outstanding_Balance", "Caption", "Outstanding Balance")
+'gui.Form.GsGcARItems.SetColumnProperty("gvARItems", "Order_Amt", "DisplayCustomNumeric", "###,###.00")
+gui.Form.GsGcARItems.SetColumnProperty("gvARItems", "Amt_Invoice", "DisplayCustomNumeric", "###,###.00")
+gui.Form.GsGcARItems.SetColumnProperty("gvARItems", "Amt_Trans_Total", "DisplayCustomNumeric", "###,###.00")
+gui.Form.GsGcARItems.SetColumnProperty("gvARItems", "Outstanding_Balance", "DisplayCustomNumeric", "###,###.00")
+gui.Form.GsGcARItems.SetColumnProperty("gvARItems", "OrderTotal", "DisplayCustomNumeric", "###,###.00")
+
+gui.Form.GsGcARItems.SetColumnProperty("gvARItems", "Order_no", "VisibleIndex", 0)
+gui.Form.GsGcARItems.SetColumnProperty("gvARItems", "Customer", "VisibleIndex", 1)
+gui.Form.GsGcARItems.SetColumnProperty("gvARItems", "OrderTotal", "VisibleIndex", 2)
+gui.Form.GsGcARItems.SetColumnProperty("gvARItems", "Amt_Invoice", "VisibleIndex", 3)
+gui.Form.GsGcARItems.SetColumnProperty("gvARItems", "Amt_Trans_Total", "VisibleIndex", 4)
+gui.Form.GsGcARItems.SetColumnProperty("gvARItems", "Outstanding_Balance", "VisibleIndex", 5)
+Program.Sub.GridSetup.End
+
+Program.Sub.cmd1_Click.Start
+v.Local.sFilePath.Declare
+v.Local.sRet.Declare
+F.Intrinsic.String.Build("{0}\SalesOrderDashboardExport.xlsx", v.Caller.DocDir, v.Local.sFilePath)
+Gui.Form.GsGcARItems.Export(v.Local.sFilepath, "xlsx")
+F.Intrinsic.File.GetHandle(v.Local.sRet)
+
+f.Intrinsic.Task.ShellExec(v.Local.sRet.Long, "OPEN", v.Local.sFilePath, "", "", 1)
+Program.Sub.cmd1_Click.End
